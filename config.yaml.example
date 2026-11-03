@@ -1,0 +1,33 @@
+# ===== 晚安成电自动提醒配置 =====
+# 复制本文件为 config.yaml 并填入真实信息
+
+uestc:
+  api_base: "https://jzsz.uestc.edu.cn/daily-checkin/api"
+
+# 邮件发送（推荐163邮箱，腾讯云服务器对QQ邮箱SMTP不友好）
+smtp:
+  host: "smtp.163.com"
+  port: 465
+  user: "your_email@163.com"
+  auth_code: "your_smtp_auth_code"
+  sender_name: "XX班晚安成电小助手"
+
+# 管理员（你自己，每天收日报）
+admin_email: "your_admin@qq.com"
+
+# 测试模式：true时不真发同学邮件，只发样例给管理员
+test_mode: true
+
+# 未打卡>=此数判定为非打卡日（假期/寒暑假自动跳过）
+no_checkin_threshold: 25
+
+# 班委轮值表（按周轮换，一人一周，周一到周日）
+# duty_offset：调整周数偏移，确保本周轮到正确的人
+duty_offset: 0
+duty_roster:
+  - name: "班委1"
+    email: "banwei1@qq.com"
+  - name: "班委2"
+    email: "banwei2@qq.com"
+  - name: "班委3"
+    email: "banwei3@qq.com"

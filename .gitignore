@@ -1,0 +1,22 @@
+# 敏感信息
+config.yaml
+cookies.json
+students.csv
+*.enc
+*.pkl
+
+# 运行时
+done_*.flag
+cron.log
+__pycache__/
+*.pyc
+
+# 调试文件
+debug_*.py
+test_*.py
+diag.py
+verify.py
+check_all.py
+session.pkl
+reauth_page.html
+reAuth.js
