@@ -122,12 +122,17 @@ def missing_table(missing):
 def main():
     stage = sys.argv[1] if len(sys.argv) > 1 else "first"
     today = date.today().isoformat()
-    stage_label = "22:30首次提醒" if stage == "first" else "23:00升级扫描"
+    if stage == "first":
+        stage_label = "22:30首次提醒"
+    elif stage == "second":
+        stage_label = "22:50升级扫描"
+    else:
+        stage_label = "23:00收尾报告"
     print(f"=== {today} {stage_label} ===")
 
     # 检查今天是否已经打满卡（first阶段打满后会写flag）
-    if stage == "second" and DONE_FLAG.exists():
-        print("[*] 22:30已全部打卡，跳过23:00扫描")
+    if stage in ("second", "report") and DONE_FLAG.exists():
+        print("[*] 22:30已全部打卡，跳过后续扫描")
         return
 
     s = load_session()
@@ -160,12 +165,12 @@ def main():
         # 给值班班委发通知
         if duty:
             duty_to = ADMIN if TEST else duty["email"]
-            send_email(duty_to, f"{today} 晚安成电：今日全部已打卡",
-                       f"<p>今日班级同学已全部完成晚安成电打卡，无需联系。</p>", html=True)
-        # first阶段打满了，写flag让second跳过
-        if stage == "first":
+            send_email(duty_to, f"【值班班委】{today} 晚安成电：今日全部已打卡",
+                       f"<p>今日班级同学已全部完成晚安成电打卡，辛苦值班班委啦~</p><p>早点休息，晚安！</p>", html=True)
+        # first或second阶段打满了，写flag让后续stage跳过
+        if stage in ("first", "second"):
             DONE_FLAG.touch()
-            print("[*] 已写入完成标记，23:00将自动跳过")
+            print("[*] 已写入完成标记，后续扫描将自动跳过")
         return
 
     # 阈值保护
@@ -180,8 +185,59 @@ def main():
     duty = get_duty()
     results = []
 
-    # === 1. 给未打卡同学发提醒 ===
-    if stage == "first":
+    # === report stage：23:00-23:20轮询 ===
+    if stage == "report":
+        import time as _time
+        print("[*] 进入23:00-23:20轮询模式...")
+        check_times = [0, 300, 600, 900, 1200]  # 23:00, 23:05, 23:10, 23:15, 23:20
+        duty = get_duty()
+        
+        for idx, offset in enumerate(check_times):
+            if idx > 0:
+                print(f"[*] 等待5分钟后第{idx+1}次检查...")
+                _time.sleep(300)
+            
+            # 重新查名单
+            try:
+                missing, _ = fetch_missing(s)
+            except Exception as e:
+                print(f"[!] 获取名单失败: {e}")
+                continue
+            
+            n = len(missing)
+            print(f"[*] 第{idx+1}次检查：未打卡{n}人")
+            
+            if n == 0:
+                print("[✓] 全部打卡完毕！")
+                # 发邮件说全部打完了
+                send_email(ADMIN, f"【日报】{today} 晚安成电：全部已打卡",
+                           f"<p>截至现在，班级同学已全部完成晚安成电打卡。</p>", html=True)
+                if duty:
+                    duty_to = ADMIN if TEST else duty["email"]
+                    send_email(duty_to, f"【值班班委】{today} 晚安成电：全部已打卡",
+                               f"<p>今日班级同学已全部完成晚安成电打卡，辛苦值班班委啦~</p><p>早点休息，晚安！</p>", html=True)
+                DONE_FLAG.touch()
+                return
+            
+            # 23:20最后一次还没打完
+            if offset == 1200:
+                print(f"[!] 23:20仍有{n}人未打卡")
+                # 发未打卡名单
+                duty_body = f"""<h2>晚安成电 {today} 23:20 最终未打卡名单</h2>
+                <p>值班班委：{duty['name']}</p>
+                <p>距关闭只剩10分钟，共 <b>{n}</b> 人仍未打卡，请电话联系；联系不上的请联系辅导员。</p>
+                {missing_table(missing)}"""
+                duty_subj = f"【值班班委】{today} 23:20最终{n}人未打卡"
+                duty_to = ADMIN if TEST else duty["email"]
+                send_email(duty_to, duty_subj, duty_body, html=True)
+                # 给管理员也发
+                send_email(ADMIN, f"【日报】{today} 23:20最终{n}人未打卡",
+                           f"<p>距关闭只剩10分钟，{n}人未打卡。</p>{missing_table(missing)}", html=True)
+                return
+        
+        results = []
+        success = 0
+    elif stage == "first":
         subject_tpl = "晚安成电打卡提醒（{}）"
         body_tpl = """<p>Hi {name}~</p>
         <p>现在十点半啦，看了一下今天的晚安成电打卡情况，你还没打哦~</p>
@@ -194,45 +250,53 @@ def main():
     else:
         subject_tpl = "最后提醒：晚安成电还没打卡（{}）"
         body_tpl = """<p>Hi {name}~</p>
-        <p>现在十一点了，再过半小时（23:30）晚安成电就关闭了，你今天还没打卡噢。</p>
-        <p>麻烦现在抽空打一下，不然会被辅导员点名的~</p>
+        <p>现在十点五十了，距离晚安成电关闭（23:30）只剩四十分钟了，你今天还没打卡噢！</p>
+        <p>这条是最后一次提醒啦，麻烦现在立刻抽空打一下，不然真的会被辅导员点名哦~</p>
         <p>微信搜「成电智慧学工」→ 智慧学工小程序 → 晚安成电。如有特殊情况记得填报。</p>
         <p>打完早点休息，晚安！</p>
         <p style="color:#888;font-size:12px;">此邮件由0915班自动打卡提醒脚本发送，不用回复~</p>"""
 
-    for stu in missing:
-        name = stu["studentName"]
-        real_email = email_map.get(name)
-        if not real_email:
-            results.append((name, "无邮箱", False))
-            continue
-        if TEST:
-            results.append((name, real_email, True))
-            print(f"  [测试] {name} -> {real_email} (仅记录)")
-            continue
-        ok = send_email(real_email, subject_tpl.format(today), body_tpl.format(name=name), html=True)
-        results.append((name, real_email, ok))
-        print(f"  [{'✓' if ok else '✗'}] {name} -> {real_email}")
-        time.sleep(MAIL_INTERVAL)
+    if stage != 'report':
+        for stu in missing:
+            name = stu["studentName"]
+            real_email = email_map.get(name)
+            if not real_email:
+                results.append((name, "无邮箱", False))
+                continue
+            if TEST:
+                results.append((name, real_email, True))
+                print(f"  [测试] {name} -> {real_email} (仅记录)")
+                continue
+            ok = send_email(real_email, subject_tpl.format(today), body_tpl.format(name=name), html=True)
+            results.append((name, real_email, ok))
+            print(f"  [{'✓' if ok else '✗'}] {name} -> {real_email}")
+            time.sleep(MAIL_INTERVAL)
 
     success = sum(1 for _, _, ok in results if ok)
 
     # === 2. 给值班班委发邮件 ===
     if duty:
         duty_to = ADMIN if TEST else duty["email"]
-        if stage == "first":
+        if stage == "report":
+            duty_body = f"""<h2>晚安成电 {today} 23:00 最终情况</h2>
+            <p>值班班委：{duty['name']}</p>
+            <p>距离关闭只剩半小时，共 <b>{n}</b> 人仍未打卡。</p>
+            <p>请电话联系；联系不上的请联系辅导员。</p>
+            {missing_table(missing)}"""
+            duty_subj = f"【值班班委】{today} 23:00最终{n}人未打卡"
+        elif stage == "first":
             duty_body = f"""<h2>晚安成电 {today} 22:30 已完成首轮提醒</h2>
             <p>值班班委：{duty['name']}</p>
             <p>今日未打卡 <b>{n}</b> 人，已全部发送提醒邮件。</p>
-            <p>23:00将进行第二次扫描，届时把仍未打卡的完整名单发给你。</p>"""
-            duty_subj = f"值班班委：{today} 22:30已提醒{n}人"
+            <p>22:50将进行第二次扫描，届时把仍未打卡的完整名单发给你。</p>"""
+            duty_subj = f"【值班班委】{today} 22:30已提醒{n}人"
         else:
-            duty_body = f"""<h2>晚安成电 {today} 23:00 未打卡名单</h2>
+            duty_body = f"""<h2>晚安成电 {today} 22:50 未打卡名单</h2>
             <p>值班班委：{duty['name']}</p>
             <p>共 <b>{n}</b> 人仍未打卡，请电话联系；联系不上的请联系辅导员。</p>
             <p>二次提醒邮件已发送。</p>
             {missing_table(missing)}"""
-            duty_subj = f"值班班委：{today} 23:00未打卡{n}人"
+            duty_subj = f"【值班班委】{today} 22:50未打卡{n}人"
         ok = send_email(duty_to, duty_subj, duty_body, html=True)
         print(f"[{'✓' if ok else '✗'}] 班委邮件 -> {duty_to}")
         time.sleep(MAIL_INTERVAL)
