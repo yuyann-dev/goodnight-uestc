@@ -47,7 +47,7 @@
 ]
 ```
 
-> 关键cookie是 `SESSION` 和 `MULTIFACTOR_BROWSER_FINGERPRINT`，少一个都不行。
+> 关键cookie是 `SESSION` 和 `MULTIFACTOR_BROWSER_FINGERPRINT`。
 
 ### 第二步：配置
 
