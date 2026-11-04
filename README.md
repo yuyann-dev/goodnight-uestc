@@ -130,7 +130,7 @@ duty_roster:
 
 ## 注意事项
 
-- **服务器时区**必须是 `Asia/Shanghai`，用 `timedatectl` 确认
+- **服务器时区**必须和打卡时间在同一时区（国内用北京时间 `Asia/Shanghai`，用 `timedatectl` 确认）
 - **发邮件间隔5秒**，改太快会被SMTP服务器限流
 - **cookie有效期约1年**，失效时脚本会自动发告警邮件，重新导出覆盖即可
 - **不要在白天手动运行测试发信**，会打扰同学。测试时保持 `test_mode: true`
